@@ -1,5 +1,11 @@
 # GOLEM LINK 1.8.1
 
+![Version](https://img.shields.io/badge/version-1.8.1-00c2a8?style=flat-square)
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)
+![Dashboard](https://img.shields.io/badge/Dashboard-React%20%2B%20TypeScript-61DAFB?style=flat-square&logo=react&logoColor=black)
+![Platforms](https://img.shields.io/badge/Platforms-Windows%2010%20%7C%20Debian%2013-4B5563?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-103%20passed-2EA043?style=flat-square)
+
 GOLEM LINK turns two computers on the same LAN — a Debian 13 laptop and a
 Windows 10 desktop — into one workstation. Each machine runs an independent
 agent; there is no master node, no cloud account and no telemetry. One dark
@@ -24,6 +30,28 @@ the other **with explicit per-peer permission**.
 GOLEM LINK does **not** merge RAM or CPU into a fake supercomputer, does not
 migrate running OS processes between machines, and does not kill processes when
 a machine is overloaded. Aggregates in the UI are labelled as aggregates.
+
+## Documentation
+
+| Document | What it covers |
+| --- | --- |
+| [docs/INSTALLATION.md](docs/INSTALLATION.md) | First install, pairing, firewall and service details |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Symptom → cause → fix, including the text relay and update paths |
+| [docs/SECURITY.md](docs/SECURITY.md) | Threat model, permissions, secrets and what the agent can reach |
+| [docs/TEST_REPORT.md](docs/TEST_REPORT.md) | What was tested, on which machine, and what remains unproven |
+| [docs/RELEASE_NOTES_1.8.1.md](docs/RELEASE_NOTES_1.8.1.md) | The current release and the installer fix it carries |
+
+## Repository map
+
+```text
+golem_link/            Python agent: FastAPI dashboard, peer transport,
+                       tasks, storage, clipboard, updates, host guard
+apps/dashboard/        React + TypeScript + Tailwind dashboard
+packaging/windows/     PyInstaller bundle, WinSW service, setup installer
+packaging/linux/       Self-contained .run installer and systemd units
+tests/                 pytest suite, including a two-node loopback cluster
+docs/                  Install, security, troubleshooting, release notes
+```
 
 ## Install
 
