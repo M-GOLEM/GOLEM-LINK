@@ -8,12 +8,15 @@ import {
   Monitor,
   Send,
   ShieldAlert,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
+  del,
   get,
   post,
   timeAgo,
+  type ClipboardBroadcastResult,
   type ClipboardCopyResult,
   type ClipboardInbox,
   type ClipboardReadResult,
@@ -102,6 +105,25 @@ export function ClipboardPage() {
     }
   };
 
+  const sendAll = async () => {
+    setBusy("send-all");
+    try {
+      const result = await post<ClipboardBroadcastResult>("/api/clipboard/send-all", { text });
+      const failed = result.results.filter((row) => !row.ok);
+      const summary = `${result.sent} of ${result.results.length} devices received ${result.chars.toLocaleString()} chars · ${result.copied} copied automatically`;
+      toast(
+        failed.length ? `${summary}. Failed: ${failed.map((row) => row.peer).join(", ")}` : summary,
+        failed.length ? "info" : "ok",
+      );
+      if (result.sent > 0) setText("");
+      refresh();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "could not send the text", "error");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const copyLocal = async () => {
     setBusy("copy");
     try {
@@ -124,6 +146,35 @@ export function ClipboardPage() {
       inboxQ.reload();
     } catch (err) {
       toast(err instanceof Error ? err.message : "could not copy the item", "error");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const removeItem = async (id: string) => {
+    setBusy(id);
+    try {
+      await del(`/api/clipboard/${id}`);
+      if (expanded === id) setExpanded(null);
+      inboxQ.reload();
+      toast("Removed from the inbox", "ok");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "could not remove the item", "error");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const clearAll = async () => {
+    if (!window.confirm("Remove every received text from this machine?")) return;
+    setBusy("clear");
+    try {
+      const result = await del<{ cleared: number }>("/api/clipboard");
+      setExpanded(null);
+      inboxQ.reload();
+      toast(`Cleared ${result.cleared} item${result.cleared === 1 ? "" : "s"}`, "ok");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "could not clear the inbox", "error");
     } finally {
       setBusy(null);
     }
@@ -225,6 +276,19 @@ export function ClipboardPage() {
               </div>
             </div>
 
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={sendAll}
+                disabled={!canWrite || !text.trim() || usable.length === 0 || busy !== null || !status?.enabled}
+                title="Send this text to every online device that grants control"
+              >
+                <Send size={14} /> {busy === "send-all" ? "Sending to all…" : `Send to all (${usable.length})`}
+              </button>
+              <span className="text-[11px] text-slate-500">One unreachable device does not stop the others.</span>
+            </div>
+
             <p className="text-[11px] leading-relaxed text-slate-500">
               The receiving node needs the same release and must grant control to this device. When its service cannot
               reach the desktop, the text waits in its inbox below with a Copy button.
@@ -242,9 +306,20 @@ export function ClipboardPage() {
           title="Received texts"
           subtitle="Newest first; the last 50 are kept on this machine."
           actions={
-            <button type="button" className="btn-ghost" onClick={() => inboxQ.reload()}>
-              Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <button type="button" className="btn-ghost" onClick={() => inboxQ.reload()}>
+                Refresh
+              </button>
+              <button
+                type="button"
+                className="btn-ghost text-rose-300/90"
+                onClick={clearAll}
+                disabled={!canWrite || items.length === 0 || busy !== null}
+                title="Remove every received text from this machine"
+              >
+                <Trash2 size={13} /> {busy === "clear" ? "Clearing…" : "Clear"}
+              </button>
+            </div>
           }
         >
           {items.length === 0 ? (
@@ -288,14 +363,25 @@ export function ClipboardPage() {
                         <span className="text-amber-300">{item.copy_error ?? "not copied"}</span>
                       )}
                     </span>
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      onClick={() => copyItem(item.id)}
-                      disabled={!canWrite || busy !== null}
-                    >
-                      <Copy size={13} /> {busy === item.id ? "Copying…" : "Copy"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => copyItem(item.id)}
+                        disabled={!canWrite || busy !== null}
+                      >
+                        <Copy size={13} /> {busy === item.id ? "Copying…" : "Copy"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost text-rose-300/90"
+                        onClick={() => removeItem(item.id)}
+                        disabled={!canWrite || busy !== null}
+                        title="Remove this text from the inbox"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
                 </li>
               ))}

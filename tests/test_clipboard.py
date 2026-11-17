@@ -151,6 +151,93 @@ def test_send_explains_an_older_peer(tmp_path):
         asyncio.run(bridge.send(peers, "gl-peer", "hello"))
 
 
+def test_send_all_reaches_every_online_peer(tmp_path):
+    bridge = make_bridge(tmp_path)
+    client = FakeClient()
+    laptop = SimpleNamespace(
+        node_id="gl-a",
+        name="Laptop",
+        status="online",
+        remote_allows_control=True,
+        target=lambda: "laptop",
+    )
+    desktop = SimpleNamespace(
+        node_id="gl-b",
+        name="Desktop",
+        status="online",
+        remote_allows_control=True,
+        target=lambda: "desktop",
+    )
+    offline = SimpleNamespace(
+        node_id="gl-c",
+        name="Tablet",
+        status="offline",
+        remote_allows_control=True,
+        target=lambda: "tablet",
+    )
+    peers = SimpleNamespace(
+        peers={"gl-a": laptop, "gl-b": desktop, "gl-c": offline}, client=client
+    )
+    result = asyncio.run(bridge.send_all(peers, "hello all"))
+    assert result["sent"] == 2
+    assert result["copied"] == 2
+    assert {row["peer"] for row in result["results"]} == {"Laptop", "Desktop"}
+    assert {call[0] for call in client.calls} == {"laptop", "desktop"}
+
+
+def test_send_all_keeps_going_when_one_peer_fails(tmp_path):
+    bridge = make_bridge(tmp_path)
+
+    class SelectiveClient(FakeClient):
+        async def post_json(self, target, path, payload, timeout=60):
+            if target == "old":
+                self.calls.append((target, path, payload))
+                raise RuntimeError("HTTP 404: Not Found")
+            return await super().post_json(target, path, payload, timeout)
+
+    good = SimpleNamespace(
+        node_id="gl-a",
+        name="Laptop",
+        status="online",
+        remote_allows_control=True,
+        target=lambda: "good",
+    )
+    old = SimpleNamespace(
+        node_id="gl-b",
+        name="Old node",
+        status="online",
+        remote_allows_control=True,
+        target=lambda: "old",
+    )
+    peers = SimpleNamespace(peers={"gl-a": good, "gl-b": old}, client=SelectiveClient())
+    result = asyncio.run(bridge.send_all(peers, "hello"))
+    assert result["sent"] == 1
+    assert result["copied"] == 1
+    failed = [row for row in result["results"] if not row["ok"]]
+    assert len(failed) == 1
+    assert "older GOLEM LINK" in failed[0]["error"]
+
+
+def test_send_all_requires_a_usable_peer(tmp_path):
+    bridge = make_bridge(tmp_path)
+    peers = fake_peers()
+    peers.peers["gl-peer"].status = "offline"
+    with pytest.raises(ValueError, match="no paired device"):
+        asyncio.run(bridge.send_all(peers, "hello"))
+
+
+def test_inbox_delete_and_clear(tmp_path):
+    bridge = make_bridge(tmp_path, auto_copy=False)
+    first = bridge.receive("gl-a", "Laptop", "one")["id"]
+    bridge.receive("gl-a", "Laptop", "two")
+    assert bridge.delete_item(first)["deleted"] == 1
+    assert first not in {row["id"] for row in bridge.recent(10)}
+    with pytest.raises(ValueError, match="unknown clipboard item"):
+        bridge.delete_item("c-missing")
+    assert bridge.clear()["cleared"] == 1
+    assert bridge.recent(10) == []
+
+
 def test_copy_local_and_copy_item_surface_the_failure(tmp_path, monkeypatch):
     bridge = make_bridge(tmp_path, auto_copy=False)
 

@@ -1,4 +1,4 @@
-# GOLEM LINK 1.7.0
+# GOLEM LINK 1.8.0
 
 GOLEM LINK turns two computers on the same LAN — a Debian 13 laptop and a
 Windows 10 desktop — into one workstation. Each machine runs an independent
@@ -230,9 +230,9 @@ instead of being silently cut.
 ```powershell
 python packaging\windows\build_setup_exe.py
 python packaging\linux\build_run.py
-python packaging\make_update_manifest.py --version 1.7.0 ^
+python packaging\make_update_manifest.py --version 1.8.0 ^
   --windows dist\GOLEM-LINK-Setup-Windows.exe ^
-  --linux dist\GOLEM-LINK-Debian13.run --notes-file docs\RELEASE_NOTES_1.7.0.md
+  --linux dist\GOLEM-LINK-Debian13.run --notes-file docs\RELEASE_NOTES_1.8.0.md
 ```
 
 `dist/updates/` then holds `manifest.json` plus both artifacts. Copy it to a
@@ -282,6 +282,17 @@ golem-link control self restart --yes
 All commands talk to the local dashboard API (default port 8080) and accept
 `--password` / `--port`. `apply` and `restart` refuse to run without `--yes`,
 so an AI or script cannot silently change a machine.
+
+## What changed in 1.8.0
+
+- **One send, every paired device.** "Send to all" relays the text to each
+  online device that grants control. A device that is offline, older, or
+  unreachable is reported by name and does not stop the others; the toast
+  summarises how many received the text and how many copied it automatically.
+- **The inbox can be cleaned up.** Each received text has a remove button and
+  the panel has Clear for the whole machine, both behind the same admin
+  session and CSRF check. Broadcast sends, removals and clears are written to
+  the audit log.
 
 ## What changed in 1.7.0
 
@@ -576,7 +587,7 @@ updates and truncated results; 1.5.0 adds queue aging, bounded running-task
 preemption, memory relief, worker priority and adaptive sampling; 1.6.0 adds the clipboard text
 relay with session clipboard writers and inbox, 1.6.1 fixes the Windows
 console-session lookup, 1.7.0 adds agent-side clipboard reading for plain-HTTP
-browsers; 99 tests total).
+browsers, 1.8.0 adds broadcast sending and inbox cleanup; 103 tests total).
 
 ## Known limitations
 

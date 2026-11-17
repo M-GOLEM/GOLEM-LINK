@@ -619,6 +619,21 @@ export interface ClipboardSendResult {
   copy_error: string | null;
 }
 
+export interface ClipboardBroadcastResult {
+  ok: boolean;
+  chars: number;
+  sent: number;
+  copied: number;
+  results: Array<{
+    peer_id: string;
+    peer: string;
+    ok: boolean;
+    copied: boolean;
+    copy_method: string | null;
+    error: string | null;
+  }>;
+}
+
 export interface ClipboardCopyResult {
   id?: string;
   copied: boolean;

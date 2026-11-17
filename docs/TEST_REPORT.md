@@ -1,9 +1,42 @@
-# Test report — GOLEM LINK 1.7.0
+# Test report — GOLEM LINK 1.8.0
 
 Date: 2026-11-17
 Build under test: 1.7.0 (working tree of `F:\GOLEM-LINK`, not a git checkout)
 Host: Windows 10 22H2 (19045) x64, Python 3.11.0 / bundled 3.13 target, Node.js 24.22.1
-Test type: automated suite + frozen-bundle payload check + live 1.6.1 → 1.7.0 self-update of the Windows node, with the agent-side clipboard read exercised from the API and from the real dashboard in a browser
+Test type: automated suite + frozen-bundle payload check + live 1.7.0 → 1.8.0 install of the Windows node, broadcast and inbox endpoints exercised live
+
+## 1.8.0 — broadcast relay and inbox cleanup
+
+| Behaviour | Implementation | Verified by |
+| --- | --- | --- |
+| One send reaches every usable device | `POST /api/clipboard/send-all` iterates online peers with control granted and calls the existing single-send path | `test_send_all_reaches_every_online_peer`; live call below |
+| One failed device does not block the rest | Each failure becomes a row with `ok=false` and its error; the loop continues | `test_send_all_keeps_going_when_one_peer_fails` |
+| No usable device is rejected before any request | Empty/oversized text, relay disabled and an empty target list raise a 400 with a readable reason | `test_send_all_requires_a_usable_peer` |
+| The inbox can remove one item or all | `DELETE /api/clipboard/{id}` and `DELETE /api/clipboard` on the bridge and SQLite, admin session + CSRF, audited | `test_inbox_delete_and_clear`; live clear below |
+| Dashboard exposes both features | Send to all (n), per-item remove, Clear with confirmation; `npm run build` / `tsc` clean | Dashboard bundle rebuilt and served by the live node |
+
+Automated suite: **103 passed** (99 from 1.7.0 plus 4 in `tests/test_clipboard.py`).
+
+Artifacts (1.8.0 build):
+
+| Artifact | Result |
+| --- | --- |
+| `GOLEM-LINK-Setup-Windows.exe` | 37,561,708 B, SHA-256 `5f802e3226f00d375f871c268faa77fc1574fd56ae093d5236dbc43c062ea099` |
+| `GOLEM-LINK-Debian13.run` | 41,481,812 B, SHA-256 `2f57b9424f08713f87db5005bfa3848b05f6f5fde5ab6b254149a3d9b33eca10` |
+| `GOLEM-LINK-Portable-Windows.zip` | 22,764,964 B |
+| `dist/updates/manifest.json` | 1.8.0, hashes above |
+| Live Windows node | `golem-link.exe --version` reports 1.8.0; API `/api/update` returns `up_to_date`, current 1.8.0; service `golem-link` RUNNING |
+| Live broadcast evidence | `POST /api/clipboard/send-all` with the 1.5.0 laptop online returned `ok:true`, `sent:0` and one isolated row: `GOLEM runs an older GOLEM LINK without text relay` — the endpoint answered 200 instead of failing |
+| Live clear evidence | `DELETE /api/clipboard` returned `{"cleared":0}`; inbox empty, status intact (enabled, auto-copy, 262,144 max, keep 50) |
+
+**Incident during deployment (real defect, fixed manually):** the service-driven
+1.8.0 apply stopped the service, moved the 1.7.0 folder to
+`C:\Program Files\GOLEM LINK.previous`, then failed extracting the payload
+(`PermissionError: _internal\_asyncio.pyd`). The installer did not re-register
+the service, so the node stayed down. Rerunning the staged installer elevated
+(`/Update /Silent /NoPair /NoBrowser`) exited 0, registered the service and
+started 1.8.0. The old 1.7.0 folder was intact and no data was lost. The
+installer's extraction/rollback behaviour is the target of the next release.
 
 ## 1.7.0 — paste through the agent instead of the browser
 

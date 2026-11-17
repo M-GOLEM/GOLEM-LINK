@@ -452,6 +452,14 @@ class Database:
             (max(1, keep),),
         )
 
+    def delete_clipboard_item(self, item_id: str) -> bool:
+        return (
+            self.execute("DELETE FROM clipboard_items WHERE id = ?", (item_id,)).rowcount > 0
+        )
+
+    def clear_clipboard_items(self) -> int:
+        return self.execute("DELETE FROM clipboard_items").rowcount
+
     # -- pairing -----------------------------------------------------------
     def create_pair_request(self, req: dict) -> None:
         cols = [

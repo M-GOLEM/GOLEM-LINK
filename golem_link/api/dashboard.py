@@ -1157,6 +1157,10 @@ class ClipboardCopyBody(BaseModel):
     text: str = Field(min_length=1, max_length=1024 * 1024)
 
 
+class ClipboardBroadcastBody(BaseModel):
+    text: str = Field(min_length=1, max_length=1024 * 1024)
+
+
 @router.get("/clipboard")
 async def clipboard_inbox(request: Request, limit: int = 20):
     session(request)
@@ -1177,6 +1181,24 @@ async def clipboard_send(body: ClipboardSendBody, request: Request):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     c.db.audit(
         "user", "clipboard-send", body.peer_id, f"{len(body.text)} chars", _client_ip(request)
+    )
+    return result
+
+
+@router.post("/clipboard/send-all")
+async def clipboard_send_all(body: ClipboardBroadcastBody, request: Request):
+    write_guard(request)
+    c = ctx(request)
+    try:
+        result = await c.clipboard.send_all(c.peers, body.text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    c.db.audit(
+        "user",
+        "clipboard-broadcast",
+        "all",
+        f"{result['sent']} devices, {len(body.text)} chars",
+        _client_ip(request),
     )
     return result
 
@@ -1205,6 +1227,29 @@ async def clipboard_read_local(request: Request):
     c.db.audit(
         "user", "clipboard-read", "local", f"{result['chars']} chars", _client_ip(request)
     )
+    return result
+
+
+@router.delete("/clipboard")
+async def clipboard_clear(request: Request):
+    write_guard(request)
+    c = ctx(request)
+    result = c.clipboard.clear()
+    c.db.audit(
+        "user", "clipboard-clear", "all", f"{result['cleared']} items", _client_ip(request)
+    )
+    return result
+
+
+@router.delete("/clipboard/{item_id}")
+async def clipboard_delete_item(item_id: str, request: Request):
+    write_guard(request)
+    c = ctx(request)
+    try:
+        result = c.clipboard.delete_item(item_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    c.db.audit("user", "clipboard-delete", item_id, "removed", _client_ip(request))
     return result
 
 

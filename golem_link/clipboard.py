@@ -106,6 +106,55 @@ class ClipboardBridge:
             "copy_error": answer.get("copy_error"),
         }
 
+    async def send_all(self, peers, text: str) -> dict:
+        cfg = self.cfg.get().clipboard
+        if not cfg.enabled:
+            raise ValueError("text relay is disabled on this node")
+        if not text or not text.strip():
+            raise ValueError("the text is empty")
+        if len(text) > cfg.max_chars:
+            raise ValueError(f"the text is longer than {cfg.max_chars} characters")
+        targets = [
+            peer
+            for peer in peers.peers.values()
+            if peer.status == "online" and peer.remote_allows_control
+        ]
+        if not targets:
+            raise ValueError("no paired device is online and grants control")
+        results = []
+        for peer in targets:
+            try:
+                answer = await self.send(peers, peer.node_id, text)
+                results.append(
+                    {
+                        "peer_id": peer.node_id,
+                        "peer": peer.name,
+                        "ok": True,
+                        "copied": answer["copied"],
+                        "copy_method": answer["copy_method"],
+                        "error": None,
+                    }
+                )
+            except ValueError as exc:
+                # One unreachable device must not block the rest of the relay.
+                results.append(
+                    {
+                        "peer_id": peer.node_id,
+                        "peer": peer.name,
+                        "ok": False,
+                        "copied": False,
+                        "copy_method": None,
+                        "error": str(exc),
+                    }
+                )
+        return {
+            "ok": True,
+            "chars": len(text),
+            "sent": sum(1 for row in results if row["ok"]),
+            "copied": sum(1 for row in results if row["copied"]),
+            "results": results,
+        }
+
     # -- incoming ----------------------------------------------------------
     def receive(self, from_node: str, from_name: str, text: str) -> dict:
         cfg = self.cfg.get().clipboard
@@ -194,6 +243,17 @@ class ClipboardBridge:
 
     async def read_local_async(self) -> dict:
         return await asyncio.to_thread(self.read_local)
+
+    def delete_item(self, item_id: str) -> dict:
+        if not self.db.delete_clipboard_item(item_id):
+            raise ValueError("unknown clipboard item")
+        self.bus.publish("clipboard-deleted", {"id": item_id})
+        return {"deleted": 1, "id": item_id}
+
+    def clear(self) -> dict:
+        removed = self.db.clear_clipboard_items()
+        self.bus.publish("clipboard-deleted", {"id": None, "cleared": removed})
+        return {"cleared": removed}
 
     async def receive_async(self, from_node: str, from_name: str, text: str) -> dict:
         return await asyncio.to_thread(self.receive, from_node, from_name, text)
