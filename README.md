@@ -224,3 +224,9 @@ A self-update can no longer leave a node unregistered: the installer removes
 the old program folder after taking the rollback copy, retries locked files for
 30 seconds, and restores the previous version and service if extraction still
 fails. Full history: [Releases](https://github.com/mrsayrws/GOLEM-LINK/releases).
+
+---
+
+Built and documented by [Mr Sayrws](https://mrsayrws.github.io/) — reverse
+engineering, malware analysis and CTF writeups at
+[mrsayrws.github.io/blog](https://mrsayrws.github.io/blog/).
