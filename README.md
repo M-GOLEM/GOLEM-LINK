@@ -1,4 +1,4 @@
-# GOLEM LINK 1.8.0
+# GOLEM LINK 1.8.1
 
 GOLEM LINK turns two computers on the same LAN — a Debian 13 laptop and a
 Windows 10 desktop — into one workstation. Each machine runs an independent
@@ -230,9 +230,9 @@ instead of being silently cut.
 ```powershell
 python packaging\windows\build_setup_exe.py
 python packaging\linux\build_run.py
-python packaging\make_update_manifest.py --version 1.8.0 ^
+python packaging\make_update_manifest.py --version 1.8.1 ^
   --windows dist\GOLEM-LINK-Setup-Windows.exe ^
-  --linux dist\GOLEM-LINK-Debian13.run --notes-file docs\RELEASE_NOTES_1.8.0.md
+  --linux dist\GOLEM-LINK-Debian13.run --notes-file docs\RELEASE_NOTES_1.8.1.md
 ```
 
 `dist/updates/` then holds `manifest.json` plus both artifacts. Copy it to a
@@ -282,6 +282,17 @@ golem-link control self restart --yes
 All commands talk to the local dashboard API (default port 8080) and accept
 `--password` / `--port`. `apply` and `restart` refuse to run without `--yes`,
 so an AI or script cannot silently change a machine.
+
+## What changed in 1.8.1
+
+- **A self-update can no longer leave the node unregistered.** The 1.8.0
+  rollout exposed an installer race: it wrote the new payload over files the
+  stopping service still held, hit `PermissionError`, and exited after the
+  service had already been uninstalled. The installer now deletes the old
+  folder after taking the rollback copy (retrying while files are released),
+  extracts into an empty directory, retries locked files for 30 s, and if
+  writing still fails it restores `GOLEM LINK.previous`, re-registers the
+  service and starts it before reporting the error.
 
 ## What changed in 1.8.0
 

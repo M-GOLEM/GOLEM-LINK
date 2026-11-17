@@ -1,5 +1,5 @@
 PACKAGE_NAME = "golem-link"
-VERSION = "1.8.0"
+VERSION = "1.8.1"
 PROTOCOL_VERSION = 1
 MDNS_SERVICE_TYPE = "_golem-link._tcp.local."
 BEACON_MAGIC = b"GOLEMLINK1"

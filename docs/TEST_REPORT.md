@@ -1,9 +1,31 @@
-# Test report — GOLEM LINK 1.8.0
+# Test report — GOLEM LINK 1.8.1
 
 Date: 2026-11-17
 Build under test: 1.7.0 (working tree of `F:\GOLEM-LINK`, not a git checkout)
 Host: Windows 10 22H2 (19045) x64, Python 3.11.0 / bundled 3.13 target, Node.js 24.22.1
-Test type: automated suite + frozen-bundle payload check + live 1.7.0 → 1.8.0 install of the Windows node, broadcast and inbox endpoints exercised live
+Test type: automated suite + frozen-bundle payload check + service-driven self-update of the Windows node 1.7.0 → 1.8.0 → 1.8.1
+
+## 1.8.1 — the installer can no longer leave the node unregistered
+
+The 1.8.0 rollout failed live at extraction (`PermissionError:
+_internal\_asyncio.pyd`): the installer wrote over files the stopping service
+still held, exited before re-registering it, and the node stayed down until the
+staged installer was rerun by hand.
+
+| Behaviour | Implementation | Verified by |
+| --- | --- | --- |
+| New builds never overwrite an exiting one | After the rollback copy, `remove_install_dir` deletes the old folder, retrying for 20 s | Live 1.8.1 apply: clean extraction, service running |
+| Locked files are retried | `extract_payload` retries the extraction for up to 30 s on `PermissionError` | Same live apply |
+| A failed extraction restores the node | On `OSError` the installer calls `restore_previous`, which re-registers and starts the previous build | Code path shared with the existing failed-start recovery; not forced live because the fixed path succeeded |
+| Updates still preserve data and the revert path | Data folder untouched; `C:\Program Files\GOLEM LINK.previous` recreated from 1.8.0 | API `revert.previous_installer` points at `staged.8.0\GOLEM-LINK-Setup-Windows.exe` |
+
+Automated suite: **103 passed** (unchanged; installer is packaging code).
+
+Live evidence: check → download → apply through the node's own API returned
+`installing`, and 45 s later `/api/setup/status` reported `version: 1.8.1`,
+`sc query golem-link` showed RUNNING, and `install.log` ended with
+`GOLEM LINK 1.8.1 is installed and running.` `/api/update` returned
+`up_to_date` with the 1.8.0 revert installer staged.
 
 ## 1.8.0 — broadcast relay and inbox cleanup
 

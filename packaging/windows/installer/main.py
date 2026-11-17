@@ -138,8 +138,29 @@ def extract_payload(target: Path) -> None:
             destination = (target / info.filename).resolve()
             if root not in destination.parents and destination != root:
                 raise SystemExit(f"Refusing unsafe payload path: {info.filename}")
-        archive.extractall(target)
+        # The service process can take a moment to release its own files after
+        # WinSW reports it stopped; retry instead of leaving a half install.
+        for attempt in range(30):
+            try:
+                archive.extractall(target)
+                break
+            except PermissionError:
+                if attempt == 29:
+                    raise
+                time.sleep(1)
     say(f"Installed files: {target}")
+
+
+def remove_install_dir(install_dir: Path) -> None:
+    for _ in range(40):
+        try:
+            shutil.rmtree(install_dir)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            time.sleep(0.5)
+    shutil.rmtree(install_dir)
 
 
 def run(command: list[str], *, check: bool = False, timeout: float = 120) -> subprocess.CompletedProcess:
@@ -355,9 +376,26 @@ def install(update: bool = False) -> int:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     backup = backup_previous(install_dir) if update else None
+    if backup is not None:
+        # Extract into a clean folder: writing over the files of a process that
+        # is still shutting down is what left 1.8.0 down on this host.
+        try:
+            remove_install_dir(install_dir)
+        except OSError as exc:
+            restore_previous(install_dir, backup)
+            raise SystemExit(
+                f"Could not clear the old folder ({exc}); the previous version was restored."
+            ) from exc
 
     say("Extracting the agent...")
-    extract_payload(install_dir)
+    try:
+        extract_payload(install_dir)
+    except OSError as exc:
+        if backup is not None:
+            restore_previous(install_dir, backup)
+        raise SystemExit(
+            f"Could not write the new version ({exc}); the previous version was restored."
+        ) from exc
     app_exe = install_dir / APP_EXE
     service_exe = install_dir / SERVICE_EXE
     if not app_exe.is_file() or not service_exe.is_file():
