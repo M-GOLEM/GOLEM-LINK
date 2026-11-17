@@ -1,0 +1,9 @@
+[Unit]
+Description=GOLEM LINK verified update trigger
+
+[Path]
+PathExists=@DATA_DIR@/updates/remote-update.request
+Unit=golem-link-update.service
+
+[Install]
+WantedBy=multi-user.target

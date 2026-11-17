@@ -1,0 +1,15 @@
+[Unit]
+Description=GOLEM LINK verified update applier
+Documentation=file:///usr/share/doc/golem-link
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/golem-link/bin/golem-link-apply-update
+Nice=10
+TimeoutStartSec=900
+PrivateTmp=yes
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes

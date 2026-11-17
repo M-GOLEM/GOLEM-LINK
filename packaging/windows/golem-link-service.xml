@@ -1,0 +1,20 @@
+<service>
+  <id>golem-link</id>
+  <name>GOLEM LINK</name>
+  <description>GOLEM LINK LAN-only dual-machine workstation and distributed compute agent.</description>
+  <executable>%BASE%\golem-link.exe</executable>
+  <arguments>run --data-dir "%ProgramData%\GolemLink"</arguments>
+  <workingdirectory>%BASE%</workingdirectory>
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  <stoptimeout>20 sec</stoptimeout>
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="30 sec"/>
+  <resetfailure>1 hour</resetfailure>
+  <logpath>%ProgramData%\GolemLink\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>5120</sizeThreshold>
+    <keepFiles>5</keepFiles>
+  </log>
+  <env name="GOLEM_LINK_DATA" value="%ProgramData%\GolemLink"/>
+</service>

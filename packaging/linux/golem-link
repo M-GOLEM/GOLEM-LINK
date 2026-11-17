@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /opt/golem-link/venv/bin/golem-link "$@"

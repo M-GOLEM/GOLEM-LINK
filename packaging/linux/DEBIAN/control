@@ -1,0 +1,18 @@
+Package: golem-link
+Version: @VERSION@
+Section: net
+Priority: optional
+Architecture: all
+Installed-Size: @SIZE@
+Maintainer: GOLEM LINK <golem-link@localhost>
+Depends: python3 (>= 3.11), python3-venv, python3-pip, adduser
+Recommends: avahi-daemon, libnss-mdns, deskflow | input-leap
+Suggests: openssh-client
+Description: LAN-only dual-machine workstation and distributed compute agent
+ GOLEM LINK pairs two computers on the same local network and unifies them:
+ one dashboard, live hardware telemetry, distributed task scheduling with
+ explicit node permissions, and checksummed resumable file transfers.
+ .
+ There is no cloud account, no master node and no telemetry. Pairing requires
+ a six-digit code compared by a human on both machines. File shares are opt-in
+ and never default to a full drive.

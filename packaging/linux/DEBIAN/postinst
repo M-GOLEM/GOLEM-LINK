@@ -1,0 +1,45 @@
+#!/bin/sh
+set -e
+
+VERSION="@VERSION@"
+APP_DIR=/opt/golem-link
+DATA_DIR=/var/lib/golem-link
+VENV="$APP_DIR/venv"
+
+if ! getent group golem-link >/dev/null; then
+    addgroup --system golem-link
+fi
+if ! getent passwd golem-link >/dev/null; then
+    adduser --system --ingroup golem-link --home "$DATA_DIR" \
+        --no-create-home --disabled-password --gecos "GOLEM LINK" golem-link
+fi
+install -d -o golem-link -g golem-link -m 0700 "$DATA_DIR"
+
+# The venv is built offline from the wheels shipped inside this package, so
+# installation does not need network access. Rebuild it when it is missing or
+# when the package version changes.
+if [ ! -x "$VENV/bin/golem-link" ] || [ "$(cat "$VENV/.golem-version" 2>/dev/null || true)" != "$VERSION" ]; then
+    rm -rf "$VENV"
+    python3 -m venv "$VENV"
+    "$VENV/bin/pip" install --no-cache-dir --no-index \
+        --find-links "$APP_DIR/wheels" "golem-link==$VERSION"
+    echo "$VERSION" > "$VENV/.golem-version"
+fi
+chmod -R a+rX "$APP_DIR"
+chmod 0755 "$VENV/bin/golem-link"
+
+if command -v systemctl >/dev/null; then
+    systemctl daemon-reload || true
+    deb-systemd-helper unmask golem-link.service >/dev/null || true
+    if [ "$1" = "configure" ] && [ -z "$2" ]; then
+        deb-systemd-helper enable golem-link.service >/dev/null || true
+        systemctl start golem-link.service || true
+    else
+        deb-systemd-helper update-state golem-link.service >/dev/null || true
+    fi
+fi
+
+echo "GOLEM LINK installed."
+echo "Open http://localhost:8080 (or http://<hostname>.local:8080) and create the admin password."
+echo "The agent listens on TCP 8080 (dashboard), TCP 8443 (peer API) and UDP 45873 (discovery)."
+exit 0

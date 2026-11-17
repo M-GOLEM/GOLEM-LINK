@@ -1,0 +1,79 @@
+{
+  "node_name": "golem-link",
+  "data_dir": "",
+  "first_run_complete": false,
+  "auto_start": true,
+  "log_level": "INFO",
+  "dashboard": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "admin_password_hash": null,
+    "admin_password_salt": null,
+    "viewer_password_hash": null,
+    "viewer_password_salt": null,
+    "session_ttl_s": 43200,
+    "login_max_attempts": 5,
+    "login_window_s": 300
+  },
+  "peer": {
+    "host": "0.0.0.0",
+    "port": 8443
+  },
+  "discovery": {
+    "mdns_enabled": true,
+    "beacon_enabled": true,
+    "beacon_port": 45873,
+    "beacon_interval_s": 5.0,
+    "manual_peers": [],
+    "reconnect_interval_s": 5.0,
+    "offline_after_s": 20.0
+  },
+  "scheduling": {
+    "enabled": true,
+    "policy": "balanced",
+    "allow_remote_execution": true,
+    "max_concurrent_tasks": 2,
+    "default_timeout_s": 3600,
+    "max_retries": 2,
+    "retry_backoff_s": 5.0,
+    "reserve_cpu_percent": 15.0,
+    "reserve_ram_percent": 10.0,
+    "rebalance_on_overload": true,
+    "enabled_plugins": ["file_hash", "compress", "image_resize", "text_stats", "disk_benchmark"],
+    "allow_custom_python": false
+  },
+  "thresholds": {
+    "cpu_warn_percent": 80.0,
+    "cpu_crit_percent": 92.0,
+    "ram_warn_percent": 80.0,
+    "ram_crit_percent": 90.0,
+    "temp_warn_c": null,
+    "temp_crit_c": null,
+    "disk_free_warn_percent": 10.0,
+    "disk_free_crit_percent": 4.0,
+    "net_latency_warn_ms": 150.0,
+    "net_loss_warn_percent": 5.0,
+    "sample_interval_s": 2.0,
+    "thermal_sustained_samples": 3
+  },
+  "update": {
+    "enabled": true,
+    "auto_check": true,
+    "auto_stage": true,
+    "auto_install": true,
+    "channel": "stable",
+    "check_interval_s": 21600,
+    "source_dir": ""
+  },
+  "input_sharing": {
+    "enabled": false,
+    "tool": "deskflow",
+    "server_node_id": null,
+    "screens": [],
+    "clipboard_sharing": true,
+    "auto_reconnect": true
+  },
+  "shares": [],
+  "alert_history_limit": 1000,
+  "audit_history_limit": 5000
+}

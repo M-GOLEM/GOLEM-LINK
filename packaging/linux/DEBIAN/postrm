@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "purge" ]; then
+    if command -v systemctl >/dev/null; then
+        deb-systemd-helper purge golem-link.service >/dev/null || true
+        deb-systemd-helper unmask golem-link.service >/dev/null || true
+    fi
+    rm -rf /opt/golem-link /var/lib/golem-link
+    if getent passwd golem-link >/dev/null; then
+        deluser --system golem-link >/dev/null 2>&1 || true
+    fi
+    if getent group golem-link >/dev/null; then
+        delgroup --system golem-link >/dev/null 2>&1 || true
+    fi
+fi
+exit 0

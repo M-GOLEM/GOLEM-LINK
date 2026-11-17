@@ -1,0 +1,264 @@
+#!/bin/bash
+# GOLEM LINK verified update applier — runs as root, takes no arguments.
+#
+# Started only by golem-link-update.service, which golem-link-update.path
+# triggers when the unprivileged agent writes
+#   $DATA_DIR/updates/remote-update.request
+#
+# The request names a staged installer plus its SHA-256 and size. This script
+# re-checks the artifact, copies it to a root-owned directory, verifies the
+# copy and only then runs it with --upgrade. It never reads commands from the
+# request: the only thing it can run is a GOLEM LINK installer.
+set -uo pipefail
+
+DATA_DIR="@DATA_DIR@"
+PY=/opt/golem-link/python/bin/python3.13
+SELF=/opt/golem-link/bin/golem-link-apply-update
+REQUEST="$DATA_DIR/updates/remote-update.request"
+RESULT="$DATA_DIR/updates/remote-update.result"
+INCOMING=/opt/golem-link-update
+LOG=/var/log/golem-link-update.log
+
+say() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$LOG"; }
+
+[ -f "$REQUEST" ] || exit 0
+
+mkdir -p "$INCOMING"
+chmod 0700 "$INCOMING"
+touch "$LOG"
+chmod 0640 "$LOG"
+
+# Run from a private copy: an upgrade replaces the installed helper while this
+# script is still running.
+if [ "${GOLEM_UPDATE_STAGE2:-}" != 1 ]; then
+    STAGE2="$INCOMING/helper.$$.sh"
+    cp -f "$SELF" "$STAGE2" || exit 1
+    chmod 0700 "$STAGE2"
+    GOLEM_UPDATE_STAGE2=1 exec "$STAGE2"
+fi
+trap 'rm -f "$INCOMING/helper.$$.sh"' EXIT
+
+WORK=$(mktemp -d /var/tmp/golem-link-update.XXXXXX)
+trap 'rm -rf "$WORK"; rm -f "$INCOMING/helper.$$.sh"' EXIT
+if ! cp -a "$REQUEST" "$WORK/request.json"; then
+    rm -f "$REQUEST"
+    exit 1
+fi
+rm -f "$REQUEST"
+
+NONCE=$(sed -n 's/.*"nonce"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{32\}\)".*/\1/p' "$WORK/request.json" | head -n 1)
+ACTION=$(sed -n 's/.*"action"[[:space:]]*:[[:space:]]*"\([a-z]*\)".*/\1/p' "$WORK/request.json" | head -n 1)
+[ -n "$ACTION" ] || ACTION=install
+
+json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\n'; }
+
+write_result() {
+    local ok="$1" rc="$2" error="$3" installer="$4" restored="${5:-}"
+    # Write inside the root-only directory: the agent owns updates/ and could
+    # otherwise plant a symlink at a predictable temp name.
+    local tmp="$INCOMING/result.json"
+    mkdir -p "$DATA_DIR/updates"
+    printf '{"ok": %s, "rc": %s, "nonce": "%s", "action": "%s", "error": "%s", "installer": "%s", "restored_from": "%s", "finished_at": %s}\n' \
+        "$ok" "$rc" "$NONCE" "$ACTION" "$(json_escape "$error")" "$(json_escape "$installer")" "$(json_escape "$restored")" "$(date +%s)" \
+        > "$tmp"
+    chown golem-link:golem-link "$tmp" 2>/dev/null || true
+    chmod 0644 "$tmp"
+    rm -f "$RESULT"
+    mv -f "$tmp" "$RESULT"
+}
+
+say "request ${NONCE:-?} ($ACTION) received"
+
+# Rollback is the only other root action, and it is bounded to the two
+# root-owned program folders the installer itself creates. It never runs a
+# command named by the request.
+if [ "$ACTION" = "rollback" ]; then
+    PREV=/opt/golem-link.previous
+    CUR=/opt/golem-link
+    if [ -L "$PREV" ] || [ ! -d "$PREV" ]; then
+        write_result false 2 "no root-owned program backup to restore" "" ""
+        say "rollback rejected: no backup folder"
+        exit 0
+    fi
+    if [ -L "$CUR" ] || [ ! -d "$CUR" ]; then
+        write_result false 2 "the current program folder is missing or unsafe" "" ""
+        say "rollback rejected: current folder unsafe"
+        exit 0
+    fi
+    FAILED="$CUR.failed.$(date +%s)"
+    say "rollback ${NONCE}: stopping the service"
+    systemctl stop golem-link >>"$LOG" 2>&1 || true
+    sleep 1
+    if ! mv "$CUR" "$FAILED"; then
+        systemctl start golem-link >>"$LOG" 2>&1 || true
+        write_result false 1 "could not move the current program folder aside" "" ""
+        exit 0
+    fi
+    if ! mv "$PREV" "$CUR"; then
+        mv "$FAILED" "$CUR"
+        systemctl start golem-link >>"$LOG" 2>&1 || true
+        write_result false 1 "could not restore the backup folder" "" ""
+        exit 0
+    fi
+    # The restored build must not immediately reinstall the release that was
+    # just rolled back, so its update loop starts disabled. The operator turns
+    # it back on from the dashboard when the reason is understood.
+    "$PY" - "$DATA_DIR/config.json" <<'PY_HOLD' >>"$LOG" 2>&1 || true
+import json
+import os
+import shutil
+import sys
+import tempfile
+
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+except (OSError, ValueError) as exc:
+    print(f"config not edited: {exc}")
+    raise SystemExit(0)
+section = data.setdefault("update", {})
+section["enabled"] = False
+section["auto_install"] = False
+section["auto_stage"] = False
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".config-", suffix=".tmp")
+with os.fdopen(fd, "w", encoding="utf-8") as handle:
+    json.dump(data, handle, indent=2)
+    handle.flush()
+    os.fsync(handle.fileno())
+os.chmod(tmp, 0o640)
+os.replace(tmp, path)
+try:
+    shutil.chown(path, "golem-link", "golem-link")
+except (LookupError, PermissionError):
+    pass
+PY_HOLD
+    if systemctl start golem-link >>"$LOG" 2>&1; then
+        write_result true 0 "" "" "$FAILED"
+        say "rollback finished; the service is running the backup"
+    else
+        systemctl stop golem-link >>"$LOG" 2>&1 || true
+        mv "$CUR" "$PREV"
+        mv "$FAILED" "$CUR"
+        systemctl start golem-link >>"$LOG" 2>&1 || true
+        write_result false 1 "the restored copy did not start; the newer install was put back" "" ""
+        say "rollback failed; newer install restored"
+    fi
+    exit 0
+fi
+
+if [ "$ACTION" != "install" ]; then
+    write_result false 2 "unknown request action" "" ""
+    say "request rejected: unknown action $ACTION"
+    exit 0
+fi
+
+ERR="$WORK/validate.err"
+OUT=$("$PY" - "$WORK/request.json" "$DATA_DIR" "$INCOMING" 2>"$ERR" <<'PY_VERIFY'
+import hashlib
+import json
+import os
+import pathlib
+import re
+import shutil
+import stat
+import sys
+
+
+def fail(message: str) -> None:
+    print(message, file=sys.stderr)
+    raise SystemExit(3)
+
+
+request = pathlib.Path(sys.argv[1])
+data = pathlib.Path(sys.argv[2])
+incoming = pathlib.Path(sys.argv[3])
+
+try:
+    payload = json.loads(request.read_text(encoding="utf-8"))
+except (OSError, ValueError) as exc:
+    fail(f"request is not readable JSON: {exc}")
+if not isinstance(payload, dict):
+    fail("request must be a JSON object")
+nonce = str(payload.get("nonce") or "")
+if not re.fullmatch(r"[0-9a-f]{32}", nonce):
+    fail("request nonce is invalid")
+version = str(payload.get("version") or "")
+if not re.fullmatch(r"[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}", version):
+    fail("request version is invalid")
+digest = str(payload.get("sha256") or "").lower()
+if not re.fullmatch(r"[0-9a-f]{64}", digest):
+    fail("request sha256 is invalid")
+try:
+    size = int(payload.get("size") or 0)
+except (TypeError, ValueError):
+    fail("request size is invalid")
+if size <= 0:
+    fail("request size is invalid")
+
+raw = pathlib.Path(str(payload.get("artifact") or ""))
+if not raw.is_absolute() or raw.is_symlink():
+    fail("staged artifact path is invalid")
+try:
+    staged = raw.resolve(strict=True)
+    root = (data / "updates" / "staged" / version).resolve(strict=True)
+except OSError as exc:
+    fail(f"staged artifact is missing: {exc}")
+if staged.parent != root or not staged.is_file():
+    fail("staged artifact is outside its version folder")
+if staged.stat().st_size != size:
+    fail("staged artifact size does not match the request")
+
+
+def sha256(path: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while block := handle.read(1024 * 1024):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+if sha256(staged) != digest:
+    fail("staged artifact SHA-256 does not match the request")
+dest = incoming / f"golem-link-{version}-{nonce[:8]}.run"
+part = dest.with_name(dest.name + ".part")
+shutil.copyfile(staged, part)
+os.chmod(part, stat.S_IRWXU)
+os.replace(part, dest)
+if sha256(dest) != digest:
+    dest.unlink(missing_ok=True)
+    fail("the root-owned copy failed verification")
+print(dest)
+print(version)
+PY_VERIFY
+)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    MSG=$(tr '\n' ' ' <"$ERR" | cut -c1-400)
+    [ -n "$MSG" ] || MSG="the request failed validation (exit $rc)"
+    write_result false 2 "$MSG" ""
+    say "request rejected: $MSG"
+    exit 0
+fi
+DEST=$(printf '%s\n' "$OUT" | sed -n '1p')
+VERSION=$(printf '%s\n' "$OUT" | sed -n '2p')
+case "$DEST" in "$INCOMING"/golem-link-*.run) ;; *)
+    write_result false 2 "the helper produced an unexpected installer path" ""
+    say "request rejected: unexpected installer path"
+    exit 0
+    ;;
+esac
+
+say "applying $VERSION from $(basename "$DEST")"
+bash "$DEST" --upgrade --no-auto-pair --no-firewall >>"$LOG" 2>&1
+rc=$?
+if [ "$rc" -eq 0 ]; then
+    write_result true 0 "" "$DEST"
+    say "installer finished; the service restarted by itself"
+else
+    MSG="the installer exited with code $rc; see $LOG"
+    write_result false "$rc" "$MSG" "$DEST"
+    say "$MSG"
+fi
+rm -f "$DEST"
+exit 0
